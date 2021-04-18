@@ -1,0 +1,181 @@
+
+* Straight
+#+begin_src emacs-lisp
+  (defvar bootstrap-version)
+  (let ((bootstrap-file
+	 (expand-file-name "straight/repos/straight.el/bootstrap.el" user-emacs-directory))
+	(bootstrap-version 5))
+    (unless (file-exists-p bootstrap-file)
+      (with-current-buffer
+	  (url-retrieve-synchronously
+	   "https://raw.githubusercontent.com/raxod502/straight.el/develop/install.el"
+	   'silent 'inhibit-cookies)
+	(goto-char (point-max))
+	(eval-print-last-sexp)))
+    (load bootstrap-file nil 'nomessage))
+  (straight-use-package 'use-package)
+  (setq straight-use-package-by-default t)
+  (setq use-package-verbose t)
+#+end_src
+
+* No littering
+#+begin_src emacs-lisp
+  (use-package no-littering)
+#+end_src
+
+* Evil
+#+begin_src emacs-lisp
+  (use-package evil
+    :init
+    (evil-mode 1))
+#+end_src
+
+* General
+#+begin_src emacs-lisp
+  (use-package general
+    :config
+    (general-swap-key nil '(motion normal visual) "n" "j")
+    (general-swap-key nil '(motion normal visual) "e" "k")
+    (general-swap-key nil '(motion normal visual) "i" "l")
+    (general-swap-key nil '(motion normal visual) "N" "J")
+    (general-swap-key nil '(motion normal visual) "E" "K")
+    (general-swap-key nil '(motion normal visual) "I" "L")
+    (general-create-definer my-leader-def :prefix "SPC")
+    (general-create-definer my-local-leader-def :prefix "SPC m")
+    (my-leader-def
+      :keymaps 'normal
+      "f f" '(find-file :which-key "Find file")
+      "f s" 'save-buffer
+      "f r" '(counsel-recentf :which-key "Recent files")
+      "b k" 'kill-current-buffer
+      "q q" 'save-buffers-kill-terminal))
+#+end_src
+
+* Counsel
+#+begin_src emacs-lisp
+  (use-package counsel
+    :config
+    (counsel-mode))
+#+end_src
+
+* GUI
+#+begin_src emacs-lisp
+  (setq scroll-conservatively 101)
+  (menu-bar-mode -1)
+  (tool-bar-mode -1)
+  (tooltip-mode -1)
+  (scroll-bar-mode -1)
+  (set-fringe-mode 10)
+
+  (global-display-line-numbers-mode t)
+  (dolist (mode '(org-mode-hook
+		  treemacs-mode-hook
+		  eshell-mode-hook))
+    (add-hook mode (lambda () (display-line-numbers-mode 0))))
+
+  (set-face-attribute 'default nil :font "Rec Mono Duotone" :height 100)
+  (set-face-attribute 'fixed-pitch nil :font "Rec Mono Duotone " :height 100)
+  (set-face-attribute 'variable-pitch nil :family "Recursive Sans Static " :height 100 :weight 'regular)
+
+  (use-package all-the-icons)
+
+  (use-package treemacs-all-the-icons
+    :requires all-the-icons)
+  (use-package all-the-icons-dired
+    :requires all-the-icons)
+
+  (use-package doom-themes
+    :requires (all-the-icons treemacs)
+    :config
+    (setq doom-themes-enable-bold t
+	  doom-themes-enable-italic t)
+    (load-theme 'doom-one t)
+    (setq doom-themes-treemacs-theme "doom-colors")
+    (doom-themes-treemacs-config)
+    (doom-themes-org-config))
+
+  (use-package doom-modeline
+    :config
+    (doom-modeline-mode))
+  (use-package dashboard
+    :config
+    (dashboard-setup-startup-hook)
+    (setq dashboard-startup-banner "~/Downloads/blackhole-lines.svg")
+    (setq dashboard-banner-logo-title "E M A C S ")
+    (setq dashboard-image-banner-max-height 300)
+    (setq initial-buffer-choice (lambda () (get-buffer "*dashboard*"))))
+#+end_src
+
+* Which Key
+#+begin_src emacs-lisp
+  (use-package which-key
+    :config
+    (which-key-mode))
+#+end_src
+
+* Terminal
+#+begin_src emacs-lisp
+  (use-package clipetty)
+  (use-package evil-terminal-cursor-changer)
+  (unless (display-graphic-p)
+    (require evil-terminal-cursor-changer)
+    (evil-terminal-cursor-changer-activate))
+#+end_src
+
+
+* Completion
+  #+begin_src emacs-lisp
+    (use-package company)
+    (use-package company-box
+      :requires company)
+    (add-hook 'company-mode-hook 'company-box-mode)
+    (use-package flycheck)
+  #+end_src
+
+* Elisp
+  #+begin_src emacs-lisp
+    (add-hook 'lisp-mode-hook #'company-mode)
+  #+end_src
+
+* Python
+  #+begin_src emacs-lisp
+    (use-package lsp-python-ms
+      :requires (company flycheck python-mode)
+      :init (setq lsp-python-ms-auto-install-server t))
+    (use-package dap-mode
+      :requires (lsp-python-ms python-mode))
+    (use-package python-mode
+      :config
+      (require 'dap-python))
+    (add-hook 'python-mode-hook #'lsp)
+  #+end_src
+
+* Magit
+  #+begin_src emacs-lisp
+    (use-package magit)
+  #+end_src
+
+* Org 
+  #+begin_src emacs-lisp
+    (use-package org
+      :straight nil
+      :defer t
+      :config
+      (setq org-agenda-files '("~/org"))
+      (setq my-inbox-file (concat org-directory "inbox.org"))
+      (setq my-todo-file (concat org-directory "todo.org"))
+      (setq my-projects-file (concat org-directory "projects.org"))
+      (setq my-someday-file (concat org-directory "someday.org"))
+      (setq org-todo-keywords '((sequence "TODO(t)" "WAIT(w)" "|" "DONE(d)")))
+      (setq org-capture-templates
+	    '(("c" "Capture" entry (file my-inbox-file) "* TODO %?\n")))
+      (setq org-refile-targets '((my-todo-file :todo . "")
+				 (my-todo-file :todo . "TODO")
+				 (my-someday-file :todo . "")))
+    (variable-pitch-mode 1))
+  #+end_src
+
+* Projectile
+  #+begin_src emacs-lisp
+    (use-package projectile)
+  #+end_src
