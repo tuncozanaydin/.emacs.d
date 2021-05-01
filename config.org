@@ -1,4 +1,3 @@
-
 * Straight
 #+begin_src emacs-lisp
   (defvar bootstrap-version)
@@ -18,6 +17,13 @@
   (setq use-package-verbose t)
 #+end_src
 
+* Garbage Collection
+  #+begin_src emacs-lisp
+    (use-package gcmh
+      :config
+      (gcmh-mode 1))
+  #+end_src
+ 
 * No littering
 #+begin_src emacs-lisp
   (use-package no-littering)
@@ -40,31 +46,76 @@
     (general-swap-key nil '(motion normal visual) "N" "J")
     (general-swap-key nil '(motion normal visual) "E" "K")
     (general-swap-key nil '(motion normal visual) "I" "L")
+
+    (setq toa/org-agenda-mode-map (make-sparse-keymap))
+    (general-define-key :keymaps 'toa/org-agenda-mode-map
+			"q" 'org-agenda-quit
+			"w" 'org-agenda-refile
+			"k" 'org-agenda-kill
+			"u" 'org-agenda-undo
+			"r" 'org-agenda-redo
+			"g" 'org-agenda-goto
+			"s" 'org-agenda-schedule
+			"d" 'org-agenda-deadline
+			"c" '((lambda () (interactive) (org-capture nil "c")) :which-key "capture")
+			"t" '(:ignore t :which-key "todo")
+			"t t" '((lambda () (interactive) (org-agenda-todo "TODO")) :which-key "todo")
+			"t d" '((lambda () (interactive) (org-agenda-todo "DONE")) :which-key "done")
+			"t w" '((lambda () (interactive) (org-agenda-todo "WAIT")) :which-key "wait")
+			"n" 'org-agenda-next-line
+			"e" 'org-agenda-previous-line)
+
+    (with-eval-after-load 'org-agenda
+      (setq org-agenda-mode-map toa/org-agenda-mode-map ))
+
+
     (general-create-definer my-leader-def :prefix "SPC")
     (general-create-definer my-local-leader-def :prefix "SPC m")
     (my-leader-def
       :keymaps 'normal
+      "a" '(:ignore t :which-key "agenda")
+      "a a" '((lambda () (interactive) (org-agenda nil "a")) :which-key "agenda")
+      "a t" '((lambda () (interactive) (org-agenda nil "t")) :which-key "todo")
+      "a c" '((lambda () (interactive) (org-capture nil "c")) :which-key "capture")
+      "f" '(:ignore t :which-key "file")
       "f f" '(find-file :which-key "Find file")
       "f s" 'save-buffer
       "f r" '(counsel-recentf :which-key "Recent files")
+      "b" '(:ignore t :which-key "buffer")
       "b k" 'kill-current-buffer
-      "q q" 'save-buffers-kill-terminal))
+      "b b" 'ivy-switch-buffer
+      "q q" 'save-buffers-kill-terminal
+      "w" '(:ignore t :which-key "window")
+      "w w" '(evil-window-next :which-key "next window")
+      "w c" '(evil-window-delete :which-key "close window")
+      "w s" '(evil-window-split :which-key "split horizontally")
+      "w v" '(evil-window-vsplit :which-key "split vertically")
+      "w o" '(delete-other-windows :which-key "close others")
+      "h" '(:ignore t :which-key "help")
+      "h k" '(describe-key :which-key "describe key")
+      "h v" '(counsel-describe-variable :which-key "describe variable")
+      "h f" '(counsel-describe-function :which-key "describe function")))
 #+end_src
 
 * Counsel
 #+begin_src emacs-lisp
   (use-package counsel
     :config
-    (counsel-mode))
+    (counsel-mode)
+    (ivy-mode))
 #+end_src
 
 * GUI
 #+begin_src emacs-lisp
-  (setq scroll-conservatively 101)
+  (setq scroll-conservatively 101
+	scroll-margin 0
+	scroll-preserve-screen-position 1)
   (menu-bar-mode -1)
   (tool-bar-mode -1)
   (tooltip-mode -1)
   (scroll-bar-mode -1)
+  (column-number-mode)
+  (size-indication-mode)
   (set-fringe-mode 10)
 
   (global-display-line-numbers-mode t)
@@ -81,6 +132,7 @@
 
   (use-package treemacs-all-the-icons
     :requires all-the-icons)
+
   (use-package all-the-icons-dired
     :requires all-the-icons)
 
@@ -97,11 +149,12 @@
   (use-package doom-modeline
     :config
     (doom-modeline-mode))
+
   (use-package dashboard
     :config
     (dashboard-setup-startup-hook)
     (setq dashboard-startup-banner "~/.emacs.d/blackhole-lines.svg")
-    (setq dashboard-banner-logo-title "E M A C S ")
+    (setq dashboard-banner-logo-title "E  M  A  C  S ")
     (setq dashboard-image-banner-max-height 300)
     (setq initial-buffer-choice (lambda () (get-buffer "*dashboard*"))))
 #+end_src
@@ -125,11 +178,15 @@
 
 * Completion
   #+begin_src emacs-lisp
-    (use-package company)
+    (use-package company
+      :ghook 'prog-mode-hook)
+
+    (add-hook 'lisp-mode-hook #'company-mode)
     (use-package company-box
       :requires company)
     (add-hook 'company-mode-hook 'company-box-mode)
-    (use-package flycheck)
+    (use-package flycheck
+      :ghook 'prog-mode-hook)
   #+end_src
 
 * Elisp
@@ -140,14 +197,27 @@
 * Python
   #+begin_src emacs-lisp
     (use-package lsp-python-ms
-      :requires (company flycheck python-mode)
+      :after (company flycheck)
+      :hook 'python-mode-hook
       :init (setq lsp-python-ms-auto-install-server t))
+    (add-hook 'python-mode-hook #'lsp)
+
     (use-package dap-mode
-      :requires (lsp-python-ms python-mode))
+      :after (lsp-python-ms)
+      :hook 'python-mode-hook)
+
     (use-package python-mode
+      :hook 'prog-mode-hook
       :config
       (require 'dap-python))
-    (add-hook 'python-mode-hook #'lsp)
+  #+end_src
+
+* Dockerfile
+  #+begin_src emacs-lisp
+    (use-package dockerfile-mode
+      :hook 'prog-mode-hook
+      :config
+      (put 'docker-image-name 'safe-local-variable #'stringp))
   #+end_src
 
 * Magit
@@ -159,23 +229,27 @@
   #+begin_src emacs-lisp
     (use-package org
       :straight nil
-      :defer t
       :config
       (setq org-agenda-files '("~/org"))
-      (setq my-inbox-file (concat org-directory "inbox.org"))
-      (setq my-todo-file (concat org-directory "todo.org"))
-      (setq my-projects-file (concat org-directory "projects.org"))
-      (setq my-someday-file (concat org-directory "someday.org"))
+      (setq my-inbox-file (concat org-directory "/inbox.org"))
+      (setq my-todo-file (concat org-directory "/todo.org"))
+      (setq my-projects-file (concat org-directory "/projects.org"))
+      (setq my-someday-file (concat org-directory "/someday.org"))
       (setq org-todo-keywords '((sequence "TODO(t)" "WAIT(w)" "|" "DONE(d)")))
       (setq org-capture-templates
 	    '(("c" "Capture" entry (file my-inbox-file) "* TODO %?\n")))
+      (setq org-refile-use-outline-path 'file)
+      (setq org-outline-path-complete-in-steps nil)
       (setq org-refile-targets '((my-todo-file :todo . "")
 				 (my-todo-file :todo . "TODO")
+				 (my-todo-file :todo . "WAIT")
 				 (my-someday-file :todo . "")))
-    (variable-pitch-mode 1))
+      (variable-pitch-mode 1))
   #+end_src
 
 * Projectile
   #+begin_src emacs-lisp
     (use-package projectile)
   #+end_src
+
+
