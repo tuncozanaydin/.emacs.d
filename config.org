@@ -222,7 +222,7 @@
 (use-package python-mode
   :hook 'prog-mode-hook
   :config
-  (setq indent-tabs-mode t)
+  (setq py-indent-tabs-mode t)
   (require 'dap-python))
   #+end_src
 
