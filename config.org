@@ -152,7 +152,7 @@
   :config
   (setq doom-themes-enable-bold t
 	doom-themes-enable-italic t)
-  (load-theme 'doom-one t)
+  (load-theme 'doom-moonlight t)
   (setq doom-themes-treemacs-theme "doom-colors")
   (doom-themes-treemacs-config)
   (doom-themes-org-config))
@@ -222,6 +222,7 @@
 (use-package python-mode
   :hook 'prog-mode-hook
   :config
+  (setq indent-tabs-mode t)
   (require 'dap-python))
   #+end_src
 
@@ -268,5 +269,4 @@
 (use-package projectile)
   #+end_src
   
-
 
