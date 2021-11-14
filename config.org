@@ -130,6 +130,7 @@
 (set-fringe-mode 10)
 
 (global-display-line-numbers-mode t)
+(setq display-line-numbers-width-start t)
 (dolist (mode '(org-mode-hook
 		treemacs-mode-hook
 		eshell-mode-hook))
