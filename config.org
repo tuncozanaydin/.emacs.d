@@ -209,22 +209,22 @@
 * Python
   #+begin_src emacs-lisp
 (use-package lsp-python-ms
-  :after (company flycheck)
+  :ensure t
   :init (setq lsp-python-ms-auto-install-server t)
-  :hook (python-mode .(lambda ()
+  :hook (python-mode . (lambda ()
 			(require 'lsp-python-ms)
 			(lsp))))
-(add-hook 'python-mode-hook #'lsp)
+;;(add-hook 'python-mode-hook #'lsp)
 
-(use-package dap-mode
-  :after (lsp-python-ms)
-  :hook 'python-mode-hook)
+;;(use-package dap-mode
+  ;;:after (lsp-python-ms)
+  ;;:hook 'python-mode-hook)
 
 (use-package python-mode
   :hook 'prog-mode-hook
   :config
-  (setq py-indent-tabs-mode t)
-  (require 'dap-python))
+  (setq py-indent-tabs-mode t))
+  ;;(require 'dap-python))
   #+end_src
 
 * Dockerfile
