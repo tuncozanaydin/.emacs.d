@@ -93,6 +93,28 @@
   (toa/set-font))
 #+end_src
 
+* Ligatures
+#+begin_src emacs-lisp :tangle config.el
+;; macOS-specific ligature support
+(when (fboundp 'mac-auto-operator-composition-mode)
+  (mac-auto-operator-composition-mode))
+
+;; Cross-platform ligature support
+(use-package ligature
+  :ensure t
+  :config
+  (ligature-set-ligatures 't '("www" "**" "***" "**/" "*>" "*/"
+                               "||" "||=" "|=" "|>" "::" ":::"
+                               "==" "===" "!=" "!==" "=!="
+                               "=>" ">>" ">>=" ">>>" "<<<"
+                               "<=" ">=" "<=>" "<|" "<||"
+                               "<|>" "<:" "<>" "<-<" "<<-"
+                               "<<=" "<->" "->" "->>" "-<"
+                               "-<<" "-=" "--" "-->" "~=" "~>"
+                               "[|" "|]" "{|" "|}" "++" "+++"))
+  (global-ligature-mode t))
+#+end_src
+
 * Theme
 #+begin_src emacs-lisp :tangle config.el
 (use-package modus-themes
