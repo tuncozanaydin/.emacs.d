@@ -157,6 +157,7 @@
 (set-fringe-mode 10)
 (setq visible-bell t)
 (setq inhibit-startup-screen t)
+(setq frame-resize-pixelwise t)
 #+end_src
 
 * Splash Screen
