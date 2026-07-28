@@ -184,6 +184,19 @@ Only applies in a graphical frame; a no-op in a terminal."
   (global-ligature-mode t))
 #+end_src
 
+* macOS
+#+begin_src emacs-lisp :tangle config.el
+;; Swap Command and Control on macOS: the (thumb-friendly) Command key becomes
+;; Emacs's Control, and the physical Control key takes over Command's role
+;; (super). Set both the ns build and the mac (emacs-mac) build variables so it
+;; works whichever port is in use; guarded to Darwin, so it's inert elsewhere.
+(when (eq system-type 'darwin)
+  (setq mac-command-modifier 'control
+        mac-control-modifier 'super
+        ns-command-modifier 'control
+        ns-control-modifier 'super))
+#+end_src
+
 * Theme
 #+begin_src emacs-lisp :tangle config.el
 (use-package modus-themes
@@ -287,10 +300,12 @@ Only applies in a graphical frame; a no-op in a terminal."
   "Left/right margin, in columns, for windows in terminal frames.")
 
 (defun toa/apply-tty-margins (&rest _)
-  "Give terminal windows left/right margins; clear margins on graphical ones."
+  "Give terminal windows left/right margins; clear margins on graphical ones.
+The splash buffer is exempt — it centers itself, so margins would shift it."
   (walk-windows
    (lambda (win)
-     (if (display-graphic-p (window-frame win))
+     (if (or (display-graphic-p (window-frame win))
+             (eq (window-buffer win) (get-buffer "*splash*")))
          (set-window-margins win 0 0)
        (set-window-margins win toa/tty-margin toa/tty-margin)))
    nil t))
@@ -336,15 +351,26 @@ Only applies in a graphical frame; a no-op in a terminal."
 (defvar toa/splash-text "Ξ  M  Λ  C  S")
 (defvar toa/splash-svg-path "~/.emacs.d/blackhole-lines.svg")
 
+;; Dim, low-contrast face for the terminal wordmark (inherits Modus's `shadow',
+;; so it stays theme-appropriate in both GUI and terminal).
+(defface toa/splash-face '((t :inherit shadow))
+  "Face for the terminal splash wordmark.")
+
 (defun toa/splash-buffer ()
   "Get or create the splash buffer."
   (get-buffer-create "*splash*"))
 
-(defun toa/splash-insert-centered (text)
-  "Insert TEXT centered in the current buffer."
+(defun toa/splash-insert-centered (text &optional face)
+  "Insert TEXT centered in the current buffer, propertized with FACE if given."
   (let* ((width (window-body-width))
-         (padding (max 0 (/ (- width (length text)) 2))))
-    (insert (make-string padding ?\s) text "\n")))
+         (padding (max 0 (/ (- width (string-width text)) 2))))
+    (insert (make-string padding ?\s)
+            (if face (propertize text 'face face) text)
+            "\n")))
+
+;; Display height (in text rows) of the SVG, so vertical centering can account
+;; for an image that occupies more rows than the single line of text it sits on.
+(defvar-local toa/splash--svg-rows 0)
 
 (defun toa/splash-insert-svg ()
   "Insert SVG image centered in the buffer."
@@ -357,12 +383,14 @@ Only applies in a graphical frame; a no-op in a terminal."
            (img-size (image-size img t))
            (img-cols (max 1 (floor (/ (car img-size) (float (frame-char-width))))))
            (padding (max 0 (/ (- (window-body-width) img-cols) 2))))
+      (setq toa/splash--svg-rows
+            (ceiling (/ (cdr img-size) (float (frame-char-height)))))
       (insert (make-string padding ?\s))
       (insert-image img)
       (insert "\n\n"))))
 
 (defun toa/splash-render ()
-  "Render the splash screen."
+  "Render the splash screen, centered vertically and horizontally."
   (with-current-buffer (toa/splash-buffer)
     (let ((inhibit-read-only t))
       (erase-buffer)
@@ -370,13 +398,25 @@ Only applies in a graphical frame; a no-op in a terminal."
                   cursor-type nil
                   mode-line-format nil
                   header-line-format nil)
-      (toa/splash-insert-svg)
-      (toa/splash-insert-centered toa/splash-text)
+      (setq toa/splash--svg-rows 0)
+      ;; GUI: SVG + wordmark. Terminal: just the dimmed wordmark.
+      (if (display-graphic-p)
+          (progn
+            (toa/splash-insert-svg)
+            (toa/splash-insert-centered toa/splash-text))
+        (toa/splash-insert-centered toa/splash-text 'toa/splash-face))
       (insert "\n")
       (toa/splash-insert-centered
        (format "Loaded %d packages in %.2fs"
                (length package-activated-list)
                (float-time (time-subtract after-init-time before-init-time))))
+      ;; Vertical centering: prepend blank lines. Count text rows plus the
+      ;; image's extra rows so the block sits in the middle of the window.
+      (let* ((content-rows (+ (count-lines (point-min) (point-max))
+                              toa/splash--svg-rows))
+             (top (max 0 (/ (- (window-body-height) content-rows) 2))))
+        (goto-char (point-min))
+        (insert (make-string top ?\n)))
       (goto-char (point-min))
       (read-only-mode 1))))
 
@@ -395,26 +435,24 @@ Only applies in a graphical frame; a no-op in a terminal."
     (kill-buffer (toa/splash-buffer))))
 
 (defun toa/splash-show ()
-  "Show the splash screen."
+  "Show the splash screen (works in both GUI and terminal frames)."
   (interactive)
-  (when (display-graphic-p)
-    (switch-to-buffer (toa/splash-buffer))
-    (toa/splash-render)
-    (add-hook 'window-size-change-functions #'toa/splash-on-resize)
-    (use-local-map (let ((map (make-sparse-keymap)))
-                     (define-key map (kbd "q") #'toa/splash-dismiss)
-                     (define-key map (kbd "RET") #'toa/splash-dismiss)
-                     (define-key map (kbd "SPC") #'toa/splash-dismiss)
-                     map))))
+  (switch-to-buffer (toa/splash-buffer))
+  (toa/splash-render)
+  (add-hook 'window-size-change-functions #'toa/splash-on-resize)
+  (use-local-map (let ((map (make-sparse-keymap)))
+                   (define-key map (kbd "q") #'toa/splash-dismiss)
+                   (define-key map (kbd "RET") #'toa/splash-dismiss)
+                   (define-key map (kbd "SPC") #'toa/splash-dismiss)
+                   map)))
 
-;; Show the splash screen on startup, or on the first GUI frame under a daemon.
+;; Show the splash screen on startup, or on the first frame under a daemon.
 (if (daemonp)
     (add-hook 'server-after-make-frame-hook
               (defun toa/splash-show-once ()
                 (remove-hook 'server-after-make-frame-hook #'toa/splash-show-once)
                 (toa/splash-show)))
-  (when (display-graphic-p)
-    (add-hook 'emacs-startup-hook #'toa/splash-show)))
+  (add-hook 'emacs-startup-hook #'toa/splash-show))
 #+end_src
 
 * Setup Reminders
