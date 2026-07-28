@@ -5,6 +5,9 @@
 #+begin_src emacs-lisp :tangle config.el
 ;; -*- lexical-binding: t; -*-
 
+;; Defined in init.el; declared here to silence byte-compiler warnings.
+(defvar toa/config-org)
+
 (defun toa/tangle-config ()
   "Tangle config.org to config.el when saving config.org."
   (when (and buffer-file-name
@@ -21,7 +24,23 @@
   :ensure t
   :config
   (setq backup-directory-alist
-        `(("." . ,(expand-file-name "litter/saves" user-emacs-directory)))))
+        `(("." . ,(expand-file-name "litter/saves" user-emacs-directory))))
+  ;; Keep auto-save files out of working directories too.
+  (setq auto-save-file-name-transforms
+        `((".*" ,(expand-file-name "litter/saves/" user-emacs-directory) t))))
+#+end_src
+
+* Garbage Collection
+#+begin_src emacs-lisp :tangle config.el
+;; Manage GC pauses adaptively: high threshold while idle, sane during typing.
+;; init.el raises the threshold for startup; gcmh owns it from here on.
+(use-package gcmh
+  :ensure t
+  :init
+  (gcmh-mode 1)
+  :custom
+  (gcmh-idle-delay 'auto)
+  (gcmh-high-cons-threshold (* 64 1024 1024)))
 #+end_src
 
 * Evil Mode
@@ -48,8 +67,9 @@
 
 * Which Key
 #+begin_src emacs-lisp :tangle config.el
+;; which-key is built into Emacs 30+.
 (use-package which-key
-  :ensure t
+  :ensure nil
   :config
   (which-key-mode))
 #+end_src
@@ -76,20 +96,69 @@
   :ensure t
   :init
   (marginalia-mode))
+
+;; Practical search and navigation commands.
+(use-package consult
+  :ensure t
+  :bind (("C-s"   . consult-line)
+         ("C-x b" . consult-buffer)
+         ("M-y"   . consult-yank-pop)
+         ("M-g g" . consult-goto-line)
+         ("M-s r" . consult-ripgrep)))
+
+;; Act on the thing at point / the current completion candidate.
+(use-package embark
+  :ensure t
+  :bind (("C-." . embark-act)
+         ("C-h B" . embark-bindings)))
+
+(use-package embark-consult
+  :ensure t
+  :after (embark consult)
+  :hook (embark-collect-mode . consult-preview-at-point-mode))
+
+;; In-buffer completion.
+(use-package corfu
+  :ensure t
+  :init
+  (global-corfu-mode)
+  :custom
+  (corfu-auto t)
+  (corfu-cycle t))
+
+(use-package cape
+  :ensure t
+  :init
+  (add-hook 'completion-at-point-functions #'cape-dabbrev)
+  (add-hook 'completion-at-point-functions #'cape-file))
 #+end_src
 
 * Smooth Scrolling
 #+begin_src emacs-lisp :tangle config.el
 (setq scroll-conservatively 101)
+;; Precise, smooth pixel-level scrolling (Emacs 29+).
+(when (fboundp 'pixel-scroll-precision-mode)
+  (pixel-scroll-precision-mode 1))
 #+end_src
 
 * Fonts
 #+begin_src emacs-lisp :tangle config.el
 (defun toa/set-font ()
-  "Set MonoLisa font."
-  (set-face-attribute 'default nil :family "MonoLisa toa" :height 110))
+  "Set the default and font-lock faces, if MonoLisa is installed.
+Only applies in a graphical frame; a no-op in a terminal."
+  (when (and (display-graphic-p)
+             (find-font (font-spec :family "MonoLisa toa")))
+    (set-face-attribute 'default nil :family "MonoLisa toa" :height 110)
+    (set-face-attribute 'font-lock-builtin-face nil :family "MonoLisa toa" :slant 'italic)
+    (set-face-attribute 'font-lock-keyword-face nil :family "MonoLisa toa" :slant 'italic :weight 'bold)
+    (set-face-attribute 'font-lock-type-face nil :family "MonoLisa toa" :slant 'italic)
+    (set-face-attribute 'font-lock-comment-face nil :family "MonoLisa toa script" :slant 'normal)
+    (set-face-attribute 'font-lock-doc-face nil :family "MonoLisa toa script" :slant 'normal)))
 
-(when (display-graphic-p)
+;; Under a daemon there is no GUI frame at startup, so defer to the first
+;; graphical client frame; otherwise set it right away.
+(if (daemonp)
+    (add-hook 'server-after-make-frame-hook #'toa/set-font)
   (toa/set-font))
 #+end_src
 
@@ -129,7 +198,8 @@
           (underline-link-symbolic border)
           (bg-mode-line-active bg-blue-subtle)
           (fg-mode-line-active fg-main)
-          (border-mode-line-active bg-mode-line-active)))
+          (border-mode-line-active unspecified)
+          (border-mode-line-inactive unspecified)))
   (load-theme 'modus-vivendi-tinted t))
 #+end_src
 
@@ -137,13 +207,56 @@
 #+begin_src emacs-lisp :tangle config.el
 (require 'epa-file)
 (epa-file-enable)
-(setq epa-file-encrypt-to "tuncozanaydin@gmail.com")
+(setq epa-file-encrypt-to '("tuncozanaydin@gmail.com"))
 (setq epg-pinentry-mode 'loopback)
 #+end_src
 
 * Org Mode
 #+begin_src emacs-lisp :tangle config.el
 (add-hook 'org-mode-hook (lambda () (electric-indent-local-mode -1)))
+
+;; Indent headings and their body text by outline level. org-indent-mode does
+;; this virtually with `line-prefix' text properties (spaces), not graphical
+;; margins, so the indentation carries over to terminal frames.
+(setq org-startup-indented t)
+
+;; Don't insert a blank line before a new heading made with M-RET. The default
+;; 'auto tries to mimic surrounding spacing and often adds an unwanted line.
+;; List items keep 'auto so they mirror existing list spacing.
+(setq org-blank-before-new-entry '((heading . nil)
+                                   (plain-list-item . auto)))
+#+end_src
+
+* Org Appearance
+#+begin_src emacs-lisp :tangle config.el
+;; A modern-org look that survives in the terminal: org-superstar swaps the
+;; leading `*' characters for Unicode bullets via `compose-region', which works
+;; in both GUI and TTY (unlike org-modern's SVG/face-scaling approach). Heading
+;; font-size scaling is deliberately omitted — it's graphical-only and wouldn't
+;; carry over to -nw. The chosen glyphs are common in terminal monospace fonts.
+(use-package org-superstar
+  :ensure t
+  :after org
+  :hook (org-mode . org-superstar-mode)
+  :custom
+  ;; Show a single bullet per heading instead of stacked leading stars.
+  (org-superstar-remove-leading-stars t)
+  (org-superstar-headline-bullets-list '("◉" "○" "◆" "◇")))
+#+end_src
+
+* Pomodoro
+#+begin_src emacs-lisp :tangle config.el
+;; Start on an Org heading (or in the agenda) with C-c p: it clocks in and
+;; counts down in the modeline, then prompts for a break.
+(use-package org-pomodoro
+  :ensure t
+  :after org
+  :commands org-pomodoro
+  :bind ("C-c p" . org-pomodoro)
+  :custom
+  (org-pomodoro-length 25)
+  (org-pomodoro-short-break-length 5)
+  (org-pomodoro-long-break-length 15))
 #+end_src
 
 * GUI Settings
@@ -154,10 +267,68 @@
 (scroll-bar-mode -1)
 (column-number-mode)
 (size-indication-mode)
-(set-fringe-mode 10)
+;; Wider fringes act as left/right margins in GUI frames. The modus override
+;; maps `fringe' to `bg-main', so these read as invisible padding rather than
+;; visible gutters. Fringes are graphical-only; the Margins section below gives
+;; terminal frames equivalent breathing room.
+(set-fringe-mode 20)
 (setq visible-bell t)
 (setq inhibit-startup-screen t)
 (setq frame-resize-pixelwise t)
+#+end_src
+
+* Margins
+#+begin_src emacs-lisp :tangle config.el
+;; Fringes don't exist under -nw, so `set-fringe-mode' can't pad a terminal.
+;; Use text-area margins (measured in columns) for TTY windows instead, and
+;; clear them on graphical windows so they never stack with the fringe padding.
+;; The choice is per-window by frame type, so a mixed GUI+TTY daemon is handled.
+(defvar toa/tty-margin 3
+  "Left/right margin, in columns, for windows in terminal frames.")
+
+(defun toa/apply-tty-margins (&rest _)
+  "Give terminal windows left/right margins; clear margins on graphical ones."
+  (walk-windows
+   (lambda (win)
+     (if (display-graphic-p (window-frame win))
+         (set-window-margins win 0 0)
+       (set-window-margins win toa/tty-margin toa/tty-margin)))
+   nil t))
+
+(add-hook 'window-configuration-change-hook #'toa/apply-tty-margins)
+#+end_src
+
+* Clipboard
+#+begin_src emacs-lisp :tangle config.el
+;; GUI Emacs talks to the system clipboard natively, but a terminal frame has
+;; no such access, so evil's `y' only reaches Emacs's own kill ring. xclip-mode
+;; bridges the kill ring to the system clipboard through an external tool
+;; (xclip / xsel / wl-copy, auto-detected). Enable it only for TTY frames;
+;; enabling it in a GUI would needlessly route the clipboard through a subprocess.
+(use-package xclip
+  :ensure t
+  :hook (tty-setup . xclip-mode))
+#+end_src
+
+* Terminal Cursor
+#+begin_src emacs-lisp :tangle config.el
+;; In a GUI, evil changes the cursor shape per state automatically; a terminal
+;; can't do that on its own. evil-terminal-cursor-changer emits the DECSCUSR
+;; escape sequences so the cursor reflects the evil state (e.g. a bar in insert
+;; state) under -nw. Activate it only on TTY frames, so the GUI is untouched.
+(use-package evil-terminal-cursor-changer
+  :ensure t
+  :after evil
+  :hook (tty-setup . evil-terminal-cursor-changer-activate))
+#+end_src
+
+* Better Defaults
+#+begin_src emacs-lisp :tangle config.el
+;; y/n instead of yes/no everywhere (Emacs 28+).
+(setq use-short-answers t)
+;; Remember recently opened files and the cursor position within files.
+(recentf-mode 1)
+(save-place-mode 1)
 #+end_src
 
 * Splash Screen
@@ -236,21 +407,61 @@
                      (define-key map (kbd "SPC") #'toa/splash-dismiss)
                      map))))
 
-;; Show splash screen on startup in GUI mode
-(when (display-graphic-p)
-  (add-hook 'emacs-startup-hook #'toa/splash-show))
+;; Show the splash screen on startup, or on the first GUI frame under a daemon.
+(if (daemonp)
+    (add-hook 'server-after-make-frame-hook
+              (defun toa/splash-show-once ()
+                (remove-hook 'server-after-make-frame-hook #'toa/splash-show-once)
+                (toa/splash-show)))
+  (when (display-graphic-p)
+    (add-hook 'emacs-startup-hook #'toa/splash-show)))
+#+end_src
+
+* Setup Reminders
+#+begin_src emacs-lisp :tangle config.el
+;; Tree-sitter grammars worth having ready at startup. treesit-auto also
+;; prompts to install a grammar on demand when you first open a matching file,
+;; so this list is just for a proactive heads-up — extend it as needed.
+(defvar toa/wanted-treesit-langs '(python yaml)
+  "Languages to check for an installed tree-sitter grammar on startup.")
+
+;; Nag (once per session, only when something is missing) about the two
+;; interactive setup steps that can't run unattended, echoing the exact command.
+(defun toa/check-setup ()
+  "Warn if nerd-icons fonts or wanted tree-sitter grammars are missing."
+  (let (todo)
+    ;; Nerd Font glyphs: the modeline icons need this font installed OS-wide.
+    (when (and (display-graphic-p)
+               (require 'nerd-icons nil t)
+               (not (find-font (font-spec :family nerd-icons-font-family))))
+      (push "M-x nerd-icons-install-fonts   (then restart Emacs)" todo))
+    ;; Tree-sitter grammars: only report the languages we actually want.
+    (when (and (fboundp 'treesit-available-p) (treesit-available-p))
+      (let ((missing (seq-remove #'treesit-language-available-p
+                                 toa/wanted-treesit-langs)))
+        (when missing
+          (push (format "M-x treesit-auto-install-all   (missing: %s)"
+                        (mapconcat #'symbol-name missing " "))
+                todo))))
+    (when todo
+      (message "Setup needed:\n%s"
+               (mapconcat (lambda (s) (concat "  • " s)) (nreverse todo) "\n")))))
+
+(add-hook 'emacs-startup-hook #'toa/check-setup 90)
 #+end_src
 
 * Modeline
 #+begin_src emacs-lisp :tangle config.el
-;; Icons for doom-modeline
-(use-package all-the-icons
-  :ensure t
-  :if (display-graphic-p))
+;; Icons for doom-modeline. Run M-x nerd-icons-install-fonts once.
+;; Loaded unconditionally: doom-modeline :after this, and gating it on
+;; (display-graphic-p) would keep the modeline from loading in a terminal.
+;; Glyphs simply don't render in a TTY, which doom-modeline-icon handles.
+(use-package nerd-icons
+  :ensure t)
 
 (use-package doom-modeline
   :ensure t
-  :after all-the-icons
+  :after nerd-icons
   :hook (after-init . doom-modeline-mode)
   :custom
   (doom-modeline-height 25)
@@ -260,25 +471,38 @@
   (doom-modeline-buffer-file-name-style 'truncate-upto-project))
 #+end_src
 
+* Tree-sitter
+#+begin_src emacs-lisp :tangle config.el
+;; Route built-in major modes to their tree-sitter variants and install the
+;; grammars on demand. Run M-x treesit-auto-install-all once, or let it prompt.
+(use-package treesit-auto
+  :ensure t
+  :custom
+  (treesit-auto-install 'prompt)
+  :config
+  (treesit-auto-add-to-auto-mode-alist 'all)
+  (global-treesit-auto-mode))
+#+end_src
+
 * YAML Mode
 #+begin_src emacs-lisp :tangle config.el
-(use-package yaml-mode
-  :ensure t
+;; yaml-ts-mode is built in; treesit-auto maps .yaml/.yml to it.
+(use-package yaml-ts-mode
+  :ensure nil
   :mode "\\.ya?ml\\'"
-  :hook (yaml-mode . (lambda ()
-                       (setq-local indent-tabs-mode nil)
-                       (setq-local tab-width 2))))
+  :hook (yaml-ts-mode . (lambda ()
+                          (setq-local indent-tabs-mode nil)
+                          (setq-local tab-width 2))))
 #+end_src
 
 * Python Mode
 #+begin_src emacs-lisp :tangle config.el
 (use-package python
   :ensure nil
-  :mode ("\\.py\\'" . python-mode)
-  :hook (python-mode . (lambda ()
-                         (setq-local indent-tabs-mode nil)
-                         (setq-local tab-width 4)
-                         (electric-indent-mode 1)))
+  :hook (python-base-mode . (lambda ()
+                              (setq-local indent-tabs-mode nil)
+                              (setq-local tab-width 4)
+                              (electric-indent-mode 1)))
   :custom
   (python-indent-offset 4)
   (python-indent-guess-indent-offset-verbose nil))
