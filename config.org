@@ -51,7 +51,12 @@
   (setq evil-undo-system 'undo-redo)
   :config
   (evil-mode 1)
-  (define-key evil-normal-state-map (kbd "U") 'evil-redo))
+  (define-key evil-normal-state-map (kbd "U") 'evil-redo)
+  ;; Let Escape do what C-g does (quit prompts, minibuffer, popups) in
+  ;; contexts evil doesn't already claim <escape> for; evil's own state
+  ;; keymaps (insert/normal/visual -> normal state) take precedence over
+  ;; global-map, so this doesn't change their behavior.
+  (global-set-key (kbd "<escape>") 'keyboard-escape-quit))
 
 (use-package evil-org
   :ensure t
@@ -184,17 +189,69 @@ Only applies in a graphical frame; a no-op in a terminal."
   (global-ligature-mode t))
 #+end_src
 
-* macOS
+* Leader Key
 #+begin_src emacs-lisp :tangle config.el
-;; Swap Command and Control on macOS: the (thumb-friendly) Command key becomes
-;; Emacs's Control, and the physical Control key takes over Command's role
-;; (super). Set both the ns build and the mac (emacs-mac) build variables so it
-;; works whichever port is in use; guarded to Darwin, so it's inert elsewhere.
-(when (eq system-type 'darwin)
-  (setq mac-command-modifier 'control
-        mac-control-modifier 'super
-        ns-command-modifier 'control
-        ns-control-modifier 'super))
+(defun toa/org-clock-in-recent ()
+  "Clock in, choosing from recently clocked tasks.
+Equivalent to `org-clock-in' called with a `\\[universal-argument]', which
+delegates to `org-clock-select-task' instead of clocking in at point."
+  (interactive)
+  (org-clock-in '(4)))
+
+(use-package general
+  :ensure t
+  :after evil
+  :config
+  (general-create-definer toa/leader-def
+    :states '(normal visual)
+    :keymaps 'override
+    :prefix "SPC")
+
+  (toa/leader-def
+    "SPC" '(execute-extended-command :wk "M-x")
+    "," '(consult-buffer :wk "switch buffer")
+
+    "f" '(:ignore t :wk "file")
+    "f f" '(find-file :wk "find file")
+    "f s" '(save-buffer :wk "save")
+    "f w" '(write-file :wk "save as")
+    "f r" '(consult-recent-file :wk "recent files")
+
+    "b" '(:ignore t :wk "buffer")
+    "b b" '(consult-buffer :wk "switch buffer")
+    "b k" '(kill-current-buffer :wk "kill buffer")
+
+    "w" '(:ignore t :wk "window")
+    "w v" '(split-window-right :wk "split right")
+    "w s" '(split-window-below :wk "split below")
+    "w d" '(delete-window :wk "delete window")
+    "w o" '(delete-other-windows :wk "delete others")
+    "w w" '(other-window :wk "other window")
+
+    "h" '(:ignore t :wk "help")
+    "h f" '(describe-function :wk "describe function")
+    "h v" '(describe-variable :wk "describe variable")
+    "h k" '(describe-key :wk "describe key")
+
+    "q" '(:ignore t :wk "quit")
+    "q q" '(save-buffers-kill-terminal :wk "quit")
+
+    "o" '(:ignore t :wk "org")
+    "o t" '(org-todo :wk "cycle todo")
+    "o d" '(org-deadline :wk "deadline")
+    "o s" '(org-schedule :wk "schedule")
+    "o p" '(org-priority :wk "priority")
+    "o c" '(org-toggle-checkbox :wk "toggle checkbox")
+    "o o" '(org-open-at-point :wk "open at point")
+    "o l" '(org-store-link :wk "store link")
+    "o L" '(org-insert-link :wk "insert link")
+
+    "c" '(:ignore t :wk "clock")
+    "c i" '(toa/org-clock-in-recent :wk "clock in (recent)")
+    "c o" '(org-clock-out :wk "clock out")
+    "c c" '(org-clock-cancel :wk "clock cancel")
+    "c g" '(org-clock-goto :wk "clock goto")
+    "c p" '(org-pomodoro :wk "pomodoro")))
 #+end_src
 
 * Theme
@@ -228,33 +285,26 @@ Only applies in a graphical frame; a no-op in a terminal."
 #+begin_src emacs-lisp :tangle config.el
 (add-hook 'org-mode-hook (lambda () (electric-indent-local-mode -1)))
 
-;; Indent headings and their body text by outline level. org-indent-mode does
-;; this virtually with `line-prefix' text properties (spaces), not graphical
-;; margins, so the indentation carries over to terminal frames.
-(setq org-startup-indented t)
-
 ;; Don't insert a blank line before a new heading made with M-RET. The default
 ;; 'auto tries to mimic surrounding spacing and often adds an unwanted line.
 ;; List items keep 'auto so they mirror existing list spacing.
 (setq org-blank-before-new-entry '((heading . nil)
                                    (plain-list-item . auto)))
+
+;; Persist the running clock and clock history across restarts (saved to
+;; var/org/clock-persist.el via no-littering); without this, org-clock-in and
+;; SPC c i's recent-task list both reset to empty on every restart.
+(setq org-clock-persist t)
+(org-clock-persistence-insinuate)
 #+end_src
 
 * Org Appearance
 #+begin_src emacs-lisp :tangle config.el
-;; A modern-org look that survives in the terminal: org-superstar swaps the
-;; leading `*' characters for Unicode bullets via `compose-region', which works
-;; in both GUI and TTY (unlike org-modern's SVG/face-scaling approach). Heading
-;; font-size scaling is deliberately omitted — it's graphical-only and wouldn't
-;; carry over to -nw. The chosen glyphs are common in terminal monospace fonts.
-(use-package org-superstar
-  :ensure t
-  :after org
-  :hook (org-mode . org-superstar-mode)
-  :custom
-  ;; Show a single bullet per heading instead of stacked leading stars.
-  (org-superstar-remove-leading-stars t)
-  (org-superstar-headline-bullets-list '("◉" "○" "◆" "◇")))
+;; Hide the leading stars of a heading: they render in a background-colored
+;; face, so deeper headings appear indented by the width of the hidden stars,
+;; leaving a single visible `*' bullet. Being face-based (not composition or
+;; images), this works in the terminal as well as the GUI.
+(setq org-hide-leading-stars t)
 #+end_src
 
 * Pomodoro
@@ -301,16 +351,54 @@ Only applies in a graphical frame; a no-op in a terminal."
 
 (defun toa/apply-tty-margins (&rest _)
   "Give terminal windows left/right margins; clear margins on graphical ones.
-The splash buffer is exempt — it centers itself, so margins would shift it."
+Exempt the splash buffer (it centers itself) and any visual-fill-column buffer
+(that mode owns its window's margins to enforce the wrap width)."
   (walk-windows
    (lambda (win)
-     (if (or (display-graphic-p (window-frame win))
-             (eq (window-buffer win) (get-buffer "*splash*")))
-         (set-window-margins win 0 0)
-       (set-window-margins win toa/tty-margin toa/tty-margin)))
+     (let ((buf (window-buffer win)))
+       (cond
+        ((and (boundp 'visual-fill-column-mode)
+              (buffer-local-value 'visual-fill-column-mode buf)))
+        ((or (display-graphic-p (window-frame win))
+             (eq buf (get-buffer "*splash*")))
+         (set-window-margins win 0 0))
+        (t (set-window-margins win toa/tty-margin toa/tty-margin)))))
    nil t))
 
+;; Apply on structural changes (splits, minibuffer opening) via the config-change
+;; hook, but ALSO on buffer changes within a window: `find-file' reuses the
+;; window, which does NOT fire the config-change hook, so without this the margin
+;; would only appear on the next structural change and shift the text sideways.
+;; The startup hook covers the very first buffer, whose initial display predates
+;; both hooks.
 (add-hook 'window-configuration-change-hook #'toa/apply-tty-margins)
+(add-hook 'window-buffer-change-functions #'toa/apply-tty-margins)
+(add-hook 'emacs-startup-hook #'toa/apply-tty-margins)
+#+end_src
+
+* Visual Wrapping
+#+begin_src emacs-lisp :tangle config.el
+;; Wrap long lines visually at column 120 without inserting real newlines, in
+;; every buffer. visual-line-mode does the word-wrapping; visual-fill-column
+;; pins the wrap point to `fill-column' (rather than the window edge) by padding
+;; the window with a right margin. The underlying text on disk is untouched.
+;; Because visual-fill-column drives the margins, it supersedes the plain TTY
+;; margins in wrapped buffers (see `toa/apply-tty-margins').
+(setq-default fill-column 120)
+
+;; visual-fill-column puts all the slack in the right margin, leaving the text
+;; flush against the left edge. Restore the left breathing room (the same
+;; `toa/tty-margin' width as the plain terminal margins) by shifting that many
+;; columns from the right margin to the left: `extra-text-width' is (LEFT . RIGHT)
+;; SUBTRACTED from each margin, so a negative left widens the left margin while a
+;; matching positive right keeps the wrap width pinned at `fill-column'.
+(setq visual-fill-column-extra-text-width (cons (- toa/tty-margin) toa/tty-margin))
+
+(use-package visual-fill-column
+  :ensure t
+  :init
+  (global-visual-line-mode 1)
+  (global-visual-fill-column-mode 1))
 #+end_src
 
 * Clipboard
@@ -398,6 +486,11 @@ The splash buffer is exempt — it centers itself, so margins would shift it."
                   cursor-type nil
                   mode-line-format nil
                   header-line-format nil)
+      ;; The splash centers itself; keep the global wrap modes from adding
+      ;; margins here, which would throw off that centering.
+      (visual-line-mode -1)
+      (when (bound-and-true-p visual-fill-column-mode)
+        (visual-fill-column-mode -1))
       (setq toa/splash--svg-rows 0)
       ;; GUI: SVG + wordmark. Terminal: just the dimmed wordmark.
       (if (display-graphic-p)
