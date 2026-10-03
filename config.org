@@ -550,30 +550,16 @@ Exempt the splash buffer (it centers itself) and any visual-fill-column buffer
 
 * Setup Reminders
 #+begin_src emacs-lisp :tangle config.el
-;; Tree-sitter grammars worth having ready at startup. treesit-auto also
-;; prompts to install a grammar on demand when you first open a matching file,
-;; so this list is just for a proactive heads-up — extend it as needed.
-(defvar toa/wanted-treesit-langs '(python yaml)
-  "Languages to check for an installed tree-sitter grammar on startup.")
-
 ;; Nag (once per session, only when something is missing) about the two
 ;; interactive setup steps that can't run unattended, echoing the exact command.
 (defun toa/check-setup ()
-  "Warn if nerd-icons fonts or wanted tree-sitter grammars are missing."
+  "Warn if nerd-icons fonts are missing."
   (let (todo)
     ;; Nerd Font glyphs: the modeline icons need this font installed OS-wide.
     (when (and (display-graphic-p)
                (require 'nerd-icons nil t)
                (not (find-font (font-spec :family nerd-icons-font-family))))
       (push "M-x nerd-icons-install-fonts   (then restart Emacs)" todo))
-    ;; Tree-sitter grammars: only report the languages we actually want.
-    (when (and (fboundp 'treesit-available-p) (treesit-available-p))
-      (let ((missing (seq-remove #'treesit-language-available-p
-                                 toa/wanted-treesit-langs)))
-        (when missing
-          (push (format "M-x treesit-auto-install-all   (missing: %s)"
-                        (mapconcat #'symbol-name missing " "))
-                todo))))
     (when todo
       (message "Setup needed:\n%s"
                (mapconcat (lambda (s) (concat "  • " s)) (nreverse todo) "\n")))))
@@ -602,28 +588,14 @@ Exempt the splash buffer (it centers itself) and any visual-fill-column buffer
   (doom-modeline-buffer-file-name-style 'truncate-upto-project))
 #+end_src
 
-* Tree-sitter
-#+begin_src emacs-lisp :tangle config.el
-;; Route built-in major modes to their tree-sitter variants and install the
-;; grammars on demand. Run M-x treesit-auto-install-all once, or let it prompt.
-(use-package treesit-auto
-  :ensure t
-  :custom
-  (treesit-auto-install 'prompt)
-  :config
-  (treesit-auto-add-to-auto-mode-alist 'all)
-  (global-treesit-auto-mode))
-#+end_src
-
 * YAML Mode
 #+begin_src emacs-lisp :tangle config.el
-;; yaml-ts-mode is built in; treesit-auto maps .yaml/.yml to it.
-(use-package yaml-ts-mode
-  :ensure nil
+(use-package yaml-mode
+  :ensure t
   :mode "\\.ya?ml\\'"
-  :hook (yaml-ts-mode . (lambda ()
-                          (setq-local indent-tabs-mode nil)
-                          (setq-local tab-width 2))))
+  :hook (yaml-mode . (lambda ()
+                       (setq-local indent-tabs-mode nil)
+                       (setq-local tab-width 2))))
 #+end_src
 
 * Python Mode
